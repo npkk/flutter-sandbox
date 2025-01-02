@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_sandbox/service/task.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+
+  runApp(ProviderScope(child: const MyApp()));
 }
 
 class MyApp extends StatelessWidget {
@@ -15,7 +19,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(title: 'Tasks'),
     );
   }
 }
@@ -30,12 +34,14 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  late TextEditingController _controller;
+  late bool showCompleted;
 
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+    showCompleted = false;
   }
 
   @override
@@ -45,25 +51,98 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
+      resizeToAvoidBottomInset: false,
       body: Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.start,
           children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Consumer(builder: (context, ref, _) {
+                final notifier = ref.read(taskProvider.notifier);
+                return Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        decoration:
+                            const InputDecoration(hintText: 'Enter Task Name'),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        final input = _controller.text.trim();
+                        await notifier.addTask(input);
+                        _controller.clear();
+                      },
+                      child: const Text("Add"),
+                    ),
+                  ],
+                );
+              }),
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            Row(
+              children: [
+                Consumer(builder: (context, ref, _) {
+                  final notifier = ref.read(taskProvider.notifier);
+                  return Checkbox(
+                    value: showCompleted,
+                    onChanged: (value) {
+                      setState(() {
+                        showCompleted = value!;
+                      });
+                      notifier.toggleShowCompleted(showCompleted);
+                    },
+                  );
+                }),
+                const Text('Show Completed Tasks'),
+              ],
             ),
+            Consumer(
+              builder: (context, ref, child) {
+                final value = ref.watch(taskProvider);
+                return value.when(
+                  data: (tasks) {
+                    return ListView(
+                      shrinkWrap: true,
+                      children: tasks
+                          .map((task) => ListTile(
+                                title: Text(task.content),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    if (!task.completed)
+                                      IconButton(
+                                        icon: const Icon(Icons.check),
+                                        onPressed: () async {
+                                          await ref
+                                              .read(taskProvider.notifier)
+                                              .completeTask(task);
+                                        },
+                                      ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete),
+                                      onPressed: () async {
+                                        await ref
+                                            .read(taskProvider.notifier)
+                                            .deleteTask(task);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ))
+                          .toList(),
+                    );
+                  },
+                  loading: () => CircularProgressIndicator(),
+                  error: (error, stackTrace) => Text('Error! $error'),
+                );
+              },
+            )
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), 
     );
   }
 }
